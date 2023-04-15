@@ -1,0 +1,7 @@
+{
+    "name": "net-sync",
+    "files": {
+        "lua/packages/net-sync/package.lua": "",
+        "lua/packages/net-sync/init.lua": ""
+    }
+}
