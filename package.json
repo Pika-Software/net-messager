@@ -1,7 +1,7 @@
 {
     "name": "net-sync",
     "files": {
-        "lua/packages/net-sync/package.lua": "",
-        "lua/packages/net-sync/init.lua": ""
+        "lua/packages/net-sync/package.lua": "https://raw.githubusercontent.com/Pika-Software/net-sync/main/lua/packages/net-sync/package.lua",
+        "lua/packages/net-sync/init.lua": "https://raw.githubusercontent.com/Pika-Software/net-sync/main/lua/packages/net-sync/init.lua"
     }
 }
