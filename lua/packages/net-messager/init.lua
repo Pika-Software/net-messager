@@ -1,5 +1,5 @@
-local ErrorNoHaltWithStack = ErrorNoHaltWithStack
 local packageName = gpm.Package:GetIdentifier()
+local ArgAssert = ArgAssert
 local pairs = pairs
 local net = net
 
@@ -17,13 +17,19 @@ function SYNC:Get( key, default )
     return value
 end
 
-function SYNC:Set( key, value )
-    if self.destroyed then return end
+do
 
-    self.data[ key ] = value
-    self.queue[ #self.queue + 1 ] = { key, value }
+    local timer_Create = timer.Create
 
-    timer.Create( self.timerName, 0.25, 1, function() self:Send() end )
+    function SYNC:Set( key, value )
+        if self.destroyed then return end
+
+        self.data[ key ] = value
+        self.queue[ #self.queue + 1 ] = { key, value }
+
+        timer_Create( self.timerName, 0.25, 1, function() self:Send() end )
+    end
+
 end
 
 -- Callbacks
@@ -60,17 +66,24 @@ function SYNC:Send()
     self.messager:Send( players )
 end
 
-function SYNC:Receive()
-    if self.destroyed then return end
+do
 
-    while net.ReadBool() do
-        local key, value = net.ReadString(), net.ReadType()
-        self:Set( key, value )
+    local ErrorNoHaltWithStack = ErrorNoHaltWithStack
+    local xpcall = xpcall
 
-        for _, callback in pairs( self.callbacks ) do
-            xpcall( callback, ErrorNoHaltWithStack, self, key, value )
+    function SYNC:Receive()
+        if self.destroyed then return end
+
+        while net.ReadBool() do
+            local key, value = net.ReadString(), net.ReadType()
+            self:Set( key, value )
+
+            for _, callback in pairs( self.callbacks ) do
+                xpcall( callback, ErrorNoHaltWithStack, self, key, value )
+            end
         end
     end
+
 end
 
 function SYNC:Destroy()
@@ -119,19 +132,29 @@ if CLIENT then
 
 end
 
-function MESSAGER:CreateSync( identifier )
-    local sync = setmetatable( {
-        ["timerName"] = self.networkString .. "/" .. tostring( identifier ),
-        ["identifier"] = identifier,
-        ["messager"] = self,
-        ["callbacks"] = {},
-        ["queue"] = {},
-        ["data"] = {}
-    }, SYNC )
+local setmetatable = setmetatable
 
-    self.syncs[ identifier ] = sync
-    return sync
+do
+
+    local tostring = tostring
+
+    function MESSAGER:CreateSync( identifier )
+        local sync = setmetatable( {
+            ["timerName"] = self.networkString .. "/" .. tostring( identifier ),
+            ["identifier"] = identifier,
+            ["messager"] = self,
+            ["callbacks"] = {},
+            ["queue"] = {},
+            ["data"] = {}
+        }, SYNC )
+
+        self.syncs[ identifier ] = sync
+        return sync
+    end
+
 end
+
+local util_AddNetworkString = util.AddNetworkString
 
 function net.Messager( name )
     ArgAssert( name, 1, "string" )
@@ -142,7 +165,7 @@ function net.Messager( name )
     }, MESSAGER )
 
     if SERVER then
-        util.AddNetworkString( messanger.networkString )
+        util_AddNetworkString( messanger.networkString )
     end
 
     if CLIENT then
