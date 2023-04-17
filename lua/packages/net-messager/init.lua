@@ -5,6 +5,7 @@ local net = net
 
 local SYNC = {}
 SYNC.__index = SYNC
+net.SYNC_METATABLE = SYNC
 
 -- Data
 function SYNC:GetTable()
@@ -93,6 +94,7 @@ end
 
 local MESSAGER = {}
 MESSAGER.__index = MESSAGER
+net.MESSAGER_METATABLE = MESSAGER
 
 MESSAGER.SYNC_ACTION_ID = 1
 
