@@ -155,6 +155,10 @@ end
 
 local setmetatable = setmetatable
 
+function MESSAGER:GetSync( identifier )
+    return self.syncs[ identifier ]
+end
+
 do
 
     local tostring = tostring
