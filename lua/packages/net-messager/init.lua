@@ -8,6 +8,11 @@ local SYNC = {}
 SYNC.__index = SYNC
 net.SYNC_METATABLE = SYNC
 
+-- Identifier
+function SYNC:GetIdentifier()
+    return self.identifier
+end
+
 -- Data
 function SYNC:GetTable()
     return self.data
@@ -27,11 +32,13 @@ do
 
     function SYNC:Set( key, value )
         if self.destroyed then return end
+
+        ArgAssert( key, 1, "string" )
         self.data[ key ] = value
 
         if SERVER then
             self.queue[ #self.queue + 1 ] = { key, value }
-            timer_Create( self.timerName, 0.25, 1, function() self:Send() end )
+            timer_Create( self.timerName, 0.25, 1, function() self:Sync() end )
         end
 
         for _, callback in pairs( self.callbacks ) do
@@ -56,10 +63,10 @@ if SERVER then
     -- override this function. it must return a table of players or nil (will broadcast to all players)
     function SYNC:Filter() end
 
-    function SYNC:Send()
+    function SYNC:Sync()
         if self.destroyed then return end
 
-        local players = SERVER and self:Filter()
+        local players = self:Filter()
 
         self.messager:Start()
             self.messager:WritePayload( self.messager.SYNC_ACTION_ID, self.identifier )
@@ -77,6 +84,30 @@ if SERVER then
             end
 
         self.messager:Send( players )
+    end
+
+    function SYNC:Send( ply )
+        if self.destroyed then return end
+
+        local players = self:Filter()
+        if type( players ) == "table" then
+            if not table.HasValue( players, ply ) then return end
+        elseif type( players ) == "CRecipientFilter" then
+            if not table.HasValue( players:GetPlayers(), ply ) then return end
+        end
+
+        self.messager:Start()
+            self.messager:WritePayload( self.messager.SYNC_ACTION_ID, self.identifier )
+
+            for key, value in pairs( self.data ) do
+                net.WriteBool( true )
+                net.WriteString( key )
+                net.WriteType( value )
+            end
+
+            net.WriteBool( false )
+
+        self.messager:Send( ply )
     end
 
 end
@@ -127,6 +158,17 @@ if SERVER then
         end
 
         net.Broadcast()
+    end
+
+    function MESSAGER:Sync( ply )
+        ArgAssert( ply, 1, "Entity" )
+        if not IsValid( ply ) then return end
+        if ply:IsBot() then return end
+
+        for _, sync in pairs( self.syncs ) do
+            if sync.destroyed then continue end
+            sync:Send( ply )
+        end
     end
 
 end
