@@ -85,8 +85,6 @@ end
 if CLIENT then
 
     function SYNC:Receive()
-        if self.destroyed then return end
-
         while net.ReadBool() do
             self:Set( net.ReadString(), net.ReadType() )
         end
@@ -95,6 +93,13 @@ if CLIENT then
 end
 
 function SYNC:Destroy()
+    if SERVER then
+        local players = self:Filter()
+        self.messager:Start()
+            self.messager:WritePayload( self.messager.SYNC_DESTROY_ID, self.identifier )
+        self.messager:Send( players )
+    end
+
     self.messager.syncs[ self.identifier ] = nil
     self.destroyed = true
 end
@@ -141,7 +146,9 @@ if CLIENT then
     end
 
     MESSAGER["Actions"][ MESSAGER.SYNC_DESTROY_ID ] = function( self, identifier )
-
+        local sync = self.syncs[ identifier ]
+        if not sync then return end
+        sync:Destroy()
     end
 
 end
