@@ -160,7 +160,12 @@ do
     local tostring = tostring
 
     function MESSAGER:CreateSync( identifier )
-        local sync = setmetatable( {
+        local sync = self.syncs[ identifier ]
+        if sync ~= nil and not sync.destroyed then
+            return sync
+        end
+
+        sync = setmetatable( {
             ["timerName"] = self.networkString .. "/" .. tostring( identifier ),
             ["identifier"] = identifier,
             ["messager"] = self,
@@ -169,7 +174,7 @@ do
         }, SYNC )
 
         if SERVER then
-            self.queue = {}
+            sync.queue = {}
         end
 
         self.syncs[ identifier ] = sync
