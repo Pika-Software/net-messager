@@ -1,4 +1,5 @@
 local packageName = gpm.Package:GetIdentifier()
+local CLIENT, SERVER = CLIENT, SERVER
 local ArgAssert = ArgAssert
 local pairs = pairs
 local net = net
@@ -20,20 +21,27 @@ end
 
 do
 
+    local ErrorNoHaltWithStack = ErrorNoHaltWithStack
     local timer_Create = timer.Create
+    local xpcall = xpcall
 
     function SYNC:Set( key, value )
         if self.destroyed then return end
-
         self.data[ key ] = value
-        self.queue[ #self.queue + 1 ] = { key, value }
 
-        timer_Create( self.timerName, 0.25, 1, function() self:Send() end )
+        if SERVER then
+            self.queue[ #self.queue + 1 ] = { key, value }
+            timer_Create( self.timerName, 0.25, 1, function() self:Send() end )
+        end
+
+        for _, callback in pairs( self.callbacks ) do
+            xpcall( callback, ErrorNoHaltWithStack, self, key, value )
+        end
     end
 
 end
 
--- Callbacks
+-- Change callbacks
 function SYNC:AddCallback( callback, name )
     self.callbacks[ name or callback ] = callback
 end
@@ -42,46 +50,45 @@ function SYNC:RemoveCallback( any )
     self.callbacks[ any ] = nil
 end
 
--- override this function. it must return a table of players or nil (will broadcast to all players)
-function SYNC:Filter() end
+-- Sending
+if SERVER then
 
--- Networking
-function SYNC:Send()
-    if self.destroyed then return end
+    -- override this function. it must return a table of players or nil (will broadcast to all players)
+    function SYNC:Filter() end
 
-    local players = SERVER and self:Filter()
+    function SYNC:Send()
+        if self.destroyed then return end
 
-    self.messager:Start()
-        self.messager:WritePayload( self.messager.SYNC_ACTION_ID, self.identifier )
+        local players = SERVER and self:Filter()
 
-        for num, data in ipairs( self.queue ) do
-            net.WriteBool( true )
-            net.WriteString( data[ 1 ] )
-            net.WriteType( data[ 2 ] )
-        end
+        self.messager:Start()
+            self.messager:WritePayload( self.messager.SYNC_ACTION_ID, self.identifier )
 
-        for key in pairs( self.queue ) do
-            self.queue[ key ] = nil
-        end
+            for num, data in ipairs( self.queue ) do
+                net.WriteBool( true )
+                net.WriteString( data[ 1 ] )
+                net.WriteType( data[ 2 ] )
+            end
 
-    self.messager:Send( players )
+            net.WriteBool( false )
+
+            for key in pairs( self.queue ) do
+                self.queue[ key ] = nil
+            end
+
+        self.messager:Send( players )
+    end
+
 end
 
-do
-
-    local ErrorNoHaltWithStack = ErrorNoHaltWithStack
-    local xpcall = xpcall
+-- Receiving
+if CLIENT then
 
     function SYNC:Receive()
         if self.destroyed then return end
 
         while net.ReadBool() do
-            local key, value = net.ReadString(), net.ReadType()
-            self:Set( key, value )
-
-            for _, callback in pairs( self.callbacks ) do
-                xpcall( callback, ErrorNoHaltWithStack, self, key, value )
-            end
+            self:Set( net.ReadString(), net.ReadType() )
         end
     end
 
@@ -96,18 +103,17 @@ local MESSAGER = {}
 MESSAGER.__index = MESSAGER
 net.MESSAGER_METATABLE = MESSAGER
 
-MESSAGER.SYNC_ACTION_ID = 1
-
-function MESSAGER:Start()
-    net.Start( self.networkString )
-end
-
-function MESSAGER:WritePayload( actionID, identifier )
-    net.WriteUInt( actionID, 8 )
-    net.WriteType( identifier )
-end
-
+-- Sending
 if SERVER then
+
+    function MESSAGER:Start()
+        net.Start( self.networkString )
+    end
+
+    function MESSAGER:WritePayload( actionID, identifier )
+        net.WriteUInt( actionID, 8 )
+        net.WriteType( identifier )
+    end
 
     function MESSAGER:Send( ply )
         if ply ~= nil then
@@ -120,17 +126,23 @@ if SERVER then
 
 end
 
+-- Actions
+MESSAGER.SYNC_ACTION_ID = 1
+MESSAGER.SYNC_DESTROY_ID = 2
+
 if CLIENT then
 
-    MESSAGER.Send = net.SendToServer
+    MESSAGER.Actions = {}
 
-    MESSAGER.Actions = {
-        [ MESSAGER.SYNC_ACTION_ID ] = function( self, identifier )
-            local sync = self.syncs[ identifier ]
-            if not sync then return end
-            sync:Receive()
-        end
-    }
+    MESSAGER["Actions"][ MESSAGER.SYNC_ACTION_ID ] = function( self, identifier )
+        local sync = self.syncs[ identifier ]
+        if not sync then return end
+        sync:Receive()
+    end
+
+    MESSAGER["Actions"][ MESSAGER.SYNC_DESTROY_ID ] = function( self, identifier )
+
+    end
 
 end
 
@@ -146,9 +158,12 @@ do
             ["identifier"] = identifier,
             ["messager"] = self,
             ["callbacks"] = {},
-            ["queue"] = {},
             ["data"] = {}
         }, SYNC )
+
+        if SERVER then
+            self.queue = {}
+        end
 
         self.syncs[ identifier ] = sync
         return sync
