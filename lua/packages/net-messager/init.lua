@@ -27,7 +27,6 @@ end
 do
 
     local ErrorNoHaltWithStack = ErrorNoHaltWithStack
-    local timer_Create = timer.Create
     local xpcall = xpcall
 
     function SYNC:Set( key, value )
@@ -37,8 +36,7 @@ do
         self.data[ key ] = value
 
         if SERVER then
-            self.queue[ #self.queue + 1 ] = { key, value }
-            timer_Create( self.timerName, 0.25, 1, function() self:Sync() end )
+            self:Send( key, value )
         end
 
         for _, callback in pairs( self.callbacks ) do
@@ -61,53 +59,41 @@ end
 if SERVER then
 
     -- override this function. it must return a table of players or nil (will broadcast to all players)
-    function SYNC:Filter() end
+    function SYNC:Filter( key, value ) end
 
-    function SYNC:Sync()
+    function SYNC:Send( key, value, ply )
         if self.destroyed then return end
 
-        local players = self:Filter()
+        local players = self:Filter( key, value )
+
+        if ply ~= nil then
+            if not IsValid( ply ) then return end
+
+            if type( players ) == "table" then
+                if not table.HasValue( players, ply ) then return end
+            elseif type( players ) == "CRecipientFilter" then
+                if not table.HasValue( players:GetPlayers(), ply ) then return end
+            end
+
+            players = ply
+        end
+
 
         self.messager:Start()
             self.messager:WritePayload( self.messager.SYNC_ACTION_ID, self.identifier )
 
-            for num, data in ipairs( self.queue ) do
-                net.WriteBool( true )
-                net.WriteString( data[ 1 ] )
-                net.WriteType( data[ 2 ] )
-            end
-
-            net.WriteBool( false )
-
-            for key in pairs( self.queue ) do
-                self.queue[ key ] = nil
-            end
+            net.WriteString( key )
+            net.WriteType( value )
 
         self.messager:Send( players )
     end
 
-    function SYNC:Send( ply )
+    function SYNC:Sync( ply )
         if self.destroyed then return end
 
-        local players = self:Filter()
-        if type( players ) == "table" then
-            if not table.HasValue( players, ply ) then return end
-        elseif type( players ) == "CRecipientFilter" then
-            if not table.HasValue( players:GetPlayers(), ply ) then return end
+        for key, value in pairs( self.data ) do
+            self:Send( key, value, ply )
         end
-
-        self.messager:Start()
-            self.messager:WritePayload( self.messager.SYNC_ACTION_ID, self.identifier )
-
-            for key, value in pairs( self.data ) do
-                net.WriteBool( true )
-                net.WriteString( key )
-                net.WriteType( value )
-            end
-
-            net.WriteBool( false )
-
-        self.messager:Send( ply )
     end
 
 end
@@ -116,9 +102,7 @@ end
 if CLIENT then
 
     function SYNC:Receive()
-        while net.ReadBool() do
-            self:Set( net.ReadString(), net.ReadType() )
-        end
+        self:Set( net.ReadString(), net.ReadType() )
     end
 
 end
@@ -167,10 +151,15 @@ if SERVER then
 
         for _, sync in pairs( self.syncs ) do
             if sync.destroyed then continue end
-            sync:Send( ply )
+            sync:Sync( ply )
         end
     end
 
+end
+
+-- Getting sync
+function MESSAGER:GetSync( identifier )
+    return self.syncs[ identifier ]
 end
 
 -- Actions
@@ -182,13 +171,13 @@ if CLIENT then
     MESSAGER.Actions = {}
 
     MESSAGER["Actions"][ MESSAGER.SYNC_ACTION_ID ] = function( self, identifier )
-        local sync = self.syncs[ identifier ]
+        local sync = self:GetSync( identifier )
         if not sync then return end
         sync:Receive()
     end
 
     MESSAGER["Actions"][ MESSAGER.SYNC_DESTROY_ID ] = function( self, identifier )
-        local sync = self.syncs[ identifier ]
+        local sync = self:GetSync( identifier )
         if not sync then return end
         sync:Destroy()
     end
@@ -197,36 +186,21 @@ end
 
 local setmetatable = setmetatable
 
-function MESSAGER:GetSync( identifier )
-    return self.syncs[ identifier ]
-end
-
-do
-
-    local tostring = tostring
-
-    function MESSAGER:CreateSync( identifier )
-        local sync = self.syncs[ identifier ]
-        if sync ~= nil and not sync.destroyed then
-            return sync
-        end
-
-        sync = setmetatable( {
-            ["timerName"] = self.networkString .. "/" .. tostring( identifier ),
-            ["identifier"] = identifier,
-            ["messager"] = self,
-            ["callbacks"] = {},
-            ["data"] = {}
-        }, SYNC )
-
-        if SERVER then
-            sync.queue = {}
-        end
-
-        self.syncs[ identifier ] = sync
+function MESSAGER:CreateSync( identifier )
+    local sync = self.syncs[ identifier ]
+    if sync ~= nil and not sync.destroyed then
         return sync
     end
 
+    sync = setmetatable( {
+        ["identifier"] = identifier,
+        ["messager"] = self,
+        ["callbacks"] = {},
+        ["data"] = {}
+    }, SYNC )
+
+    self.syncs[ identifier ] = sync
+    return sync
 end
 
 local util_AddNetworkString = util.AddNetworkString
