@@ -73,9 +73,7 @@ end
 if SERVER then
 
     -- override this function. it must return a table of players or nil (will broadcast to all players)
-    function SYNC:Filter( key, value )
-        return self.messager:Filter( key, value )
-    end
+    function SYNC:Filter( key, value ) end
 
     function SYNC:Send( key, value, ply )
         if self.destroyed then return end
@@ -141,9 +139,6 @@ net.MESSAGER_METATABLE = MESSAGER
 
 -- Sending
 if SERVER then
-
-    -- override this function. it must return a table of players or nil (will broadcast to all players)
-    function MESSAGER:Filter( key, value ) end
 
     function MESSAGER:Start()
         net.Start( self.networkString )
