@@ -2,6 +2,7 @@ local packageName = gpm.Package:GetIdentifier()
 local CLIENT, SERVER = CLIENT, SERVER
 local ArgAssert = ArgAssert
 local pairs = pairs
+local type = type
 local net = net
 
 local SYNC = {}
@@ -40,6 +41,7 @@ do
         end
 
         for _, callback in pairs( self.callbacks ) do
+            if type( callback ) ~= "function" then continue end
             xpcall( callback, ErrorNoHaltWithStack, self, key, value )
         end
     end
@@ -47,8 +49,20 @@ do
 end
 
 -- Change callbacks
-function SYNC:AddCallback( callback, name )
-    self.callbacks[ name or callback ] = callback
+function SYNC:GetCallbacks()
+    return self.callbacks
+end
+
+function SYNC:GetCallback( name )
+    return self.callbacks[ name ]
+end
+
+function SYNC:SetCallback( name, func )
+    self.callbacks[ name ] = func
+end
+
+function SYNC:AddCallback( func, name )
+    self:SetCallback( name or func, func )
 end
 
 function SYNC:RemoveCallback( any )

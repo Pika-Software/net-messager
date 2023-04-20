@@ -1,3 +1,3 @@
 name = "net-messager"
 main = "init.lua"
-version = 1
+version = 000100
