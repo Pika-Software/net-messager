@@ -92,7 +92,6 @@ if SERVER then
             players = ply
         end
 
-
         self.messager:Start()
             self.messager:WritePayload( self.messager.SYNC_ACTION_ID, self.identifier )
 
