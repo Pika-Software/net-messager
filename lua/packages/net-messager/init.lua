@@ -125,7 +125,7 @@ function SYNC:Destroy()
     if SERVER then
         local players = self:Filter()
         self.messager:Start()
-            self.messager:WritePayload( self.messager.SYNC_DESTROY_ID, self.identifier )
+            self.messager:WritePayload( self.messager.DESTROY_ACTION_ID, self.identifier )
         self.messager:Send( players )
     end
 
@@ -178,7 +178,7 @@ end
 
 -- Actions
 MESSAGER.SYNC_ACTION_ID = 1
-MESSAGER.SYNC_DESTROY_ID = 2
+MESSAGER.DESTROY_ACTION_ID = 2
 
 if CLIENT then
 
@@ -188,7 +188,7 @@ if CLIENT then
             if not sync then return end
             sync:Receive()
         end,
-        [ MESSAGER.SYNC_DESTROY_ID ] = function( self, identifier )
+        [ MESSAGER.DESTROY_ACTION_ID ] = function( self, identifier )
             local sync = self:GetSync( identifier )
             if not sync then return end
             sync:Destroy()
