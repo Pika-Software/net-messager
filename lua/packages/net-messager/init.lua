@@ -1,3 +1,4 @@
+
 local packageName = gpm.Package:GetIdentifier()
 local CLIENT, SERVER = CLIENT, SERVER
 local ArgAssert = ArgAssert
@@ -128,7 +129,7 @@ function SYNC:Destroy()
         self.messager:Send( players )
     end
 
-    self.messager.syncs[ self.identifier ] = nil
+    self.messager.Syncs[ self.identifier ] = nil
     self.destroyed = true
 end
 
@@ -140,7 +141,7 @@ net.MESSAGER_METATABLE = MESSAGER
 if SERVER then
 
     function MESSAGER:Start()
-        net.Start( self.networkString )
+        net.Start( self.NetworkString )
     end
 
     function MESSAGER:WritePayload( actionID, identifier )
@@ -162,7 +163,7 @@ if SERVER then
         if not IsValid( ply ) then return end
         if ply:IsBot() then return end
 
-        for _, sync in pairs( self.syncs ) do
+        for _, sync in pairs( self.Syncs ) do
             if sync.destroyed then continue end
             sync:Sync( ply )
         end
@@ -172,7 +173,7 @@ end
 
 -- Getting sync
 function MESSAGER:GetSync( identifier )
-    return self.syncs[ identifier ]
+    return self.Syncs[ identifier ]
 end
 
 -- Actions
@@ -181,26 +182,25 @@ MESSAGER.SYNC_DESTROY_ID = 2
 
 if CLIENT then
 
-    MESSAGER.Actions = {}
-
-    MESSAGER["Actions"][ MESSAGER.SYNC_ACTION_ID ] = function( self, identifier )
-        local sync = self:GetSync( identifier )
-        if not sync then return end
-        sync:Receive()
-    end
-
-    MESSAGER["Actions"][ MESSAGER.SYNC_DESTROY_ID ] = function( self, identifier )
-        local sync = self:GetSync( identifier )
-        if not sync then return end
-        sync:Destroy()
-    end
+    MESSAGER.Actions = {
+        [ MESSAGER.SYNC_ACTION_ID ] = function( self, identifier )
+            local sync = self:GetSync( identifier )
+            if not sync then return end
+            sync:Receive()
+        end,
+        [ MESSAGER.SYNC_DESTROY_ID ] = function( self, identifier )
+            local sync = self:GetSync( identifier )
+            if not sync then return end
+            sync:Destroy()
+        end
+    }
 
 end
 
 local setmetatable = setmetatable
 
 function MESSAGER:CreateSync( identifier )
-    local sync = self.syncs[ identifier ]
+    local sync = self.Syncs[ identifier ]
     if sync ~= nil and not sync.destroyed then
         return sync
     end
@@ -212,7 +212,7 @@ function MESSAGER:CreateSync( identifier )
         ["data"] = {}
     }, SYNC )
 
-    self.syncs[ identifier ] = sync
+    self.Syncs[ identifier ] = sync
     return sync
 end
 
@@ -222,18 +222,20 @@ function net.Messager( name )
     ArgAssert( name, 1, "string" )
 
     local messanger = setmetatable( {
-        ["networkString"] = packageName .. " - " .. name,
-        ["syncs"] = {}
+        ["NetworkString"] = packageName .. " - " .. name,
+        ["Syncs"] = {}
     }, MESSAGER )
 
     if SERVER then
-        util_AddNetworkString( messanger.networkString )
+        util_AddNetworkString( messanger.NetworkString )
     end
 
     if CLIENT then
-        net.Receive( messanger.networkString, function()
+        net.Receive( messanger.NetworkString, function()
             local action = messanger.Actions[ net.ReadUInt( 8 ) ]
-            if action ~= nil then action( messanger, net.ReadType() ) end
+            if action ~= nil then
+                action( messanger, net.ReadType() )
+            end
         end )
     end
 
