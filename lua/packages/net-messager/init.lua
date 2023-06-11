@@ -1,5 +1,5 @@
 
-local packageName = gpm.Package:GetIdentifier()
+local gPackage = gpm.Package
 local CLIENT, SERVER = CLIENT, SERVER
 local ArgAssert = ArgAssert
 local pairs = pairs
@@ -222,7 +222,7 @@ function net.Messager( name )
     ArgAssert( name, 1, "string" )
 
     local messanger = setmetatable( {
-        ["NetworkString"] = packageName .. " - " .. name,
+        ["NetworkString"] = gPackage:GetIdentifier( name ),
         ["Syncs"] = {}
     }, MESSAGER )
 
