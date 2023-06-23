@@ -1,4 +1,3 @@
-
 local gPackage = gpm.Package
 local CLIENT, SERVER = CLIENT, SERVER
 local ArgAssert = ArgAssert

@@ -1,7 +1,0 @@
-{
-    "name": "net-messager",
-    "files": {
-        "lua/packages/net-messager/package.lua": "https://raw.githubusercontent.com/Pika-Software/net-messager/main/lua/packages/net-messager/package.lua",
-        "lua/packages/net-messager/init.lua": "https://raw.githubusercontent.com/Pika-Software/net-messager/main/lua/packages/net-messager/init.lua"
-    }
-}
