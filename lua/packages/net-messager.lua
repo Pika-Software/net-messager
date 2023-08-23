@@ -1,72 +1,76 @@
-local gPackage = gpm.Package
+install( "packages/glua-extensions", "https://github.com/Pika-Software/glua-extensions" )
+
+local util_AddNetworkString = util.AddNetworkString
+local ErrorNoHaltWithStack = ErrorNoHaltWithStack
+local table_HasIValue = table.HasIValue
 local CLIENT, SERVER = CLIENT, SERVER
+local setmetatable = setmetatable
+local gPackage = gpm.Package
 local ArgAssert = ArgAssert
+local IsValid = IsValid
+local xpcall = xpcall
 local pairs = pairs
 local type = type
 local net = net
 
 local SYNC = {}
 SYNC.__index = SYNC
-net.SYNC_METATABLE = SYNC
+net.SYNC_META = SYNC
 
 -- Identifier
 function SYNC:GetIdentifier()
-    return self.identifier
+    return self.Identifier
 end
 
 -- Data
 function SYNC:GetTable()
-    return self.data
+    return self.Data
 end
 
 function SYNC:Get( key, default )
-    local value = self.data[ key ]
+    local value = self.Data[ key ]
     if value == nil then return default end
     return value
 end
 
-do
+function SYNC:IsValid()
+    return self.Valid
+end
 
-    local ErrorNoHaltWithStack = ErrorNoHaltWithStack
-    local xpcall = xpcall
+function SYNC:Set( key, value )
+    if not self:IsValid() then return end
+    self.Data[ key ] = value
 
-    function SYNC:Set( key, value )
-        if self.destroyed then return end
-
-        ArgAssert( key, 1, "string" )
-        self.data[ key ] = value
-
-        if SERVER then
-            self:Send( key, value )
-        end
-
-        for _, callback in pairs( self.callbacks ) do
-            if type( callback ) ~= "function" then continue end
-            xpcall( callback, ErrorNoHaltWithStack, self, key, value )
-        end
+    if SERVER then
+        self:Send( key, value )
     end
 
+    for _, callback in pairs( self.Callbacks ) do
+        xpcall( callback, ErrorNoHaltWithStack, self, key, value )
+    end
 end
 
 -- Change callbacks
 function SYNC:GetCallbacks()
-    return self.callbacks
+    return self.Callbacks
 end
 
 function SYNC:GetCallback( name )
-    return self.callbacks[ name ]
+    return self.Callbacks[ name ]
 end
 
 function SYNC:SetCallback( name, func )
-    self.callbacks[ name ] = func
+    ArgAssert( func, 2, "function" )
+    self.Callbacks[ name ] = func
 end
 
 function SYNC:AddCallback( func, name )
+    ArgAssert( func, 1, "function" )
     self:SetCallback( name or func, func )
 end
 
 function SYNC:RemoveCallback( any )
-    self.callbacks[ any ] = nil
+    self.Callbacks[ any ] = nil
 end
 
 -- Sending
@@ -76,35 +80,31 @@ if SERVER then
     function SYNC:Filter( key, value ) end
 
     function SYNC:Send( key, value, ply )
-        if self.destroyed then return end
-
+        if not self:IsValid() then return end
         local players = self:Filter( key, value )
 
         if ply ~= nil then
             if not IsValid( ply ) then return end
 
             if type( players ) == "table" then
-                if not table.HasValue( players, ply ) then return end
+                if not table_HasIValue( players, ply ) then return end
             elseif type( players ) == "CRecipientFilter" then
-                if not table.HasValue( players:GetPlayers(), ply ) then return end
+                if not table_HasIValue( players:GetPlayers(), ply ) then return end
             end
 
             players = ply
         end
 
-        self.messager:Start()
-            self.messager:WritePayload( self.messager.SYNC_ACTION_ID, self.identifier )
-
-            net.WriteString( key )
-            net.WriteType( value )
-
-        self.messager:Send( players )
+        self.Messager:Start()
+            self.Messager:WritePayload( self.Messager.SYNC_ACTION_ID, self.Identifier )
+            net.WriteCompressedType( key )
+            net.WriteCompressedType( value )
+        self.Messager:Send( players )
     end
 
     function SYNC:Sync( ply )
-        if self.destroyed then return end
-
-        for key, value in pairs( self.data ) do
+        if not self:IsValid() then return end
+        for key, value in pairs( self.Data ) do
             self:Send( key, value, ply )
         end
     end
@@ -115,7 +115,7 @@ end
 if CLIENT then
 
     function SYNC:Receive()
-        self:Set( net.ReadString(), net.ReadType() )
+        self:Set( net.ReadCompressedType(), net.ReadCompressedType() )
     end
 
 end
@@ -123,18 +123,18 @@ end
 function SYNC:Destroy()
     if SERVER then
         local players = self:Filter()
-        self.messager:Start()
-            self.messager:WritePayload( self.messager.DESTROY_ACTION_ID, self.identifier )
-        self.messager:Send( players )
+        self.Messager:Start()
+            self.Messager:WritePayload( self.Messager.DESTROY_ACTION_ID, self.Identifier )
+        self.Messager:Send( players )
     end
 
-    self.messager.Syncs[ self.identifier ] = nil
-    self.destroyed = true
+    self.Messager.Syncs[ self.Identifier ] = nil
+    self.Valid = false
 end
 
 local MESSAGER = {}
 MESSAGER.__index = MESSAGER
-net.MESSAGER_METATABLE = MESSAGER
+net.MESSAGER_META = MESSAGER
 
 -- Sending
 if SERVER then
@@ -159,11 +159,9 @@ if SERVER then
 
     function MESSAGER:Sync( ply )
         ArgAssert( ply, 1, "Entity" )
-        if not IsValid( ply ) then return end
-        if ply:IsBot() then return end
-
+        if not IsValid( ply ) or ply:IsBot() then return end
         for _, sync in pairs( self.Syncs ) do
-            if sync.destroyed then continue end
+            if not sync:IsValid() then continue end
             sync:Sync( ply )
         end
     end
@@ -196,26 +194,22 @@ if CLIENT then
 
 end
 
-local setmetatable = setmetatable
-
 function MESSAGER:CreateSync( identifier )
     local sync = self.Syncs[ identifier ]
-    if sync ~= nil and not sync.destroyed then
+    if sync ~= nil and sync:IsValid() then
         return sync
     end
 
     sync = setmetatable( {
-        ["identifier"] = identifier,
-        ["messager"] = self,
-        ["callbacks"] = {},
-        ["data"] = {}
+        ["Identifier"] = identifier,
+        ["Messager"] = self,
+        ["Callbacks"] = {},
+        ["Data"] = {}
     }, SYNC )
 
     self.Syncs[ identifier ] = sync
     return sync
 end
-
-local util_AddNetworkString = util.AddNetworkString
 
 function net.Messager( name )
     ArgAssert( name, 1, "string" )
